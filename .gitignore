@@ -1,3 +1,12 @@
+# JetBrains / Android Studio
+.idea/
+*.iml
+# Exceptions: if you want to share run configurations, you'd unignore .idea/runConfigurations/
+# but for a first commit, it's safer to ignore the whole folder.
+
+# VS Code
+.vscode/
+
 # Compiled class file
 *.class
 
@@ -25,3 +34,22 @@ replay_pid*
 
 # Kotlin Gradle plugin data, see https://kotlinlang.org/docs/whatsnew20.html#new-directory-for-kotlin-data-in-gradle-projects
 .kotlin/
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+.env
+.venv
+env.bak/
+
+# Android
+android/build/
+android/app/build/
+android/.gradle/
+android/local.properties
+*.apk
+*.aab
