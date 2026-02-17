@@ -1,11 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import spots
+from app.routers import rankings, spots
 
 app = FastAPI(
-    title="Stelli API",
-    description="Backend for Stelli - share study spots around campus",
+    title="Steli API",
+    description="Backend for Steli - share study spots around campus",
     version="0.1.0",
 )
 
@@ -17,6 +17,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(rankings.router, prefix="/api/rankings", tags=["rankings"])
 app.include_router(spots.router, prefix="/api/spots", tags=["study-spots"])
 
 
