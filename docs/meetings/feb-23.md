@@ -1,4 +1,4 @@
-Feb 12-23
+Feb 23- Mar 2 
 
 - [all members] shared their standup updates, talking about progress made + blockers
 - [all members] rehearsed created their presentation slides and rehearsed their parts for the upcoming presentation
