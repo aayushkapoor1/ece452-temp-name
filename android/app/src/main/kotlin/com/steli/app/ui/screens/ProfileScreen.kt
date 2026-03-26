@@ -293,6 +293,11 @@ private fun StatChip(count: Int, label: String, onClick: () -> Unit) {
 
 @Composable
 private fun ProfileRankedCard(ranked: RankedSpot) {
+    val scoreColor = when {
+        ranked.score >= 8.0 -> androidx.compose.ui.graphics.Color(0xFF2E7D32)
+        ranked.score >= 6.0 -> androidx.compose.ui.graphics.Color(0xFFF9A825)
+        else -> androidx.compose.ui.graphics.Color(0xFFC62828)
+    }
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
@@ -334,14 +339,14 @@ private fun ProfileRankedCard(ranked: RankedSpot) {
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Surface(
-                        color = MaterialTheme.colorScheme.inverseSurface,
+                        color = scoreColor.copy(alpha = 0.16f),
                         shape = RoundedCornerShape(4.dp),
                     ) {
                         Text(
                             text = ranked.tier,
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.inverseOnSurface,
+                            color = scoreColor,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                         )
                     }
@@ -349,7 +354,7 @@ private fun ProfileRankedCard(ranked: RankedSpot) {
                         text = "%.1f".format(ranked.score),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = scoreColor,
                     )
                 }
                 Text(

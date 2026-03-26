@@ -2,10 +2,12 @@ package com.steli.app.ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -34,17 +36,18 @@ fun LoginScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(32.dp),
+            .padding(horizontal = 28.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
             text = "Steli",
-            style = MaterialTheme.typography.displayMedium,
-            color = MaterialTheme.colorScheme.primary,
+            style = MaterialTheme.typography.displaySmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onBackground,
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         Text(
             text = "Rank your favorite study spots",
@@ -52,7 +55,7 @@ fun LoginScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        Spacer(modifier = Modifier.height(48.dp))
+        Spacer(modifier = Modifier.height(40.dp))
 
         OutlinedTextField(
             value = username,
@@ -60,6 +63,14 @@ fun LoginScreen(
             label = { Text("Username") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(10.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = MaterialTheme.colorScheme.onBackground,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                focusedLabelColor = MaterialTheme.colorScheme.onBackground,
+                unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                cursorColor = MaterialTheme.colorScheme.onBackground,
+            ),
         )
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -72,6 +83,14 @@ fun LoginScreen(
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(10.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = MaterialTheme.colorScheme.onBackground,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                focusedLabelColor = MaterialTheme.colorScheme.onBackground,
+                unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                cursorColor = MaterialTheme.colorScheme.onBackground,
+            ),
         )
 
         if (error != null) {
@@ -95,8 +114,23 @@ fun LoginScreen(
                         AuthManager.saveSession(response.token, response.user)
                         onLoginSuccess()
                     } catch (e: retrofit2.HttpException) {
+                        val body = e.response()?.errorBody()?.string() ?: ""
                         error = when (e.code()) {
-                            401 -> "Invalid username or password"
+                            401 -> {
+                                try {
+                                    val jsonObj = com.google.gson.JsonParser.parseString(body).asJsonObject
+                                    val detailEl = jsonObj.get("detail")
+                                    if (detailEl != null && detailEl.isJsonObject) {
+                                        val detailObj = detailEl.asJsonObject
+                                        val messageEl = detailObj.get("message")
+                                        messageEl?.asString ?: "Invalid username or password"
+                                    } else {
+                                        "Invalid username or password"
+                                    }
+                                } catch (_: Exception) {
+                                    "Invalid username or password"
+                                }
+                            }
                             else -> "Login failed. Please try again."
                         }
                     } catch (e: Exception) {
@@ -107,23 +141,32 @@ fun LoginScreen(
                 }
             },
             enabled = !loading && username.isNotBlank() && password.isNotBlank(),
-            modifier = Modifier.fillMaxWidth().height(48.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.inverseSurface,
+                contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
         ) {
             if (loading) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(20.dp),
                     strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.onPrimary,
+                    color = MaterialTheme.colorScheme.inverseOnSurface,
                 )
             } else {
-                Text("Log In")
+                Text("Log In", fontWeight = FontWeight.SemiBold)
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
         TextButton(onClick = onNavigateToRegister) {
-            Text("Don't have an account? Sign up")
+            Text("Don't have an account? Sign up", color = MaterialTheme.colorScheme.onBackground)
         }
     }
 }

@@ -65,6 +65,230 @@ private sealed class RankState {
         val low: Int,
         val high: Int,
     ) : RankState()
+
+    interface Handler {
+        @Composable
+        fun Render(ctx: RankStateContext)
+    }
+
+    fun handler(): Handler = when (this) {
+        is Viewing -> ViewingHandler
+        is Adding -> AddingHandler
+        is RatingFirst -> RatingFirstHandler(this)
+        is Comparing -> ComparingHandler(this)
+    }
+}
+
+private data class RankStateContext(
+    val rankedSpots: List<LocalRankedSpot>,
+    val setRankedSpots: (List<LocalRankedSpot>) -> Unit,
+    val state: RankState,
+    val setState: (RankState) -> Unit,
+    val loading: Boolean,
+    val saving: Boolean,
+    val error: String?,
+    val setError: (String?) -> Unit,
+    val editingSpot: LocalRankedSpot?,
+    val setEditingSpot: (LocalRankedSpot?) -> Unit,
+    val scope: kotlinx.coroutines.CoroutineScope,
+    val saveRankings: (List<LocalRankedSpot>) -> Unit,
+    val insertAtIndex: (LocalRankedSpot, Int) -> Unit,
+    val startIndexForRating: (String) -> Int,
+    val sameRangeIndices: (String) -> List<Int>,
+    val recordComparison: suspend (String, String) -> Unit,
+)
+
+private object ViewingHandler : RankState.Handler {
+    @Composable
+    override fun Render(ctx: RankStateContext) {
+        Box(Modifier.fillMaxSize()) {
+            when {
+                ctx.loading -> {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                }
+                ctx.rankedSpots.isEmpty() -> {
+                    EmptyRankingsView()
+                }
+                else -> {
+                    RankedListView(
+                        spots = ctx.rankedSpots.sortedByDescending { it.score },
+                        saving = ctx.saving,
+                        onDelete = { spotToRemove ->
+                            val idx = ctx.rankedSpots.indexOf(spotToRemove)
+                            if (idx >= 0) {
+                                val updated = ctx.rankedSpots.toMutableList().apply { removeAt(idx) }
+                                ctx.saveRankings(updated)
+                            }
+                        },
+                        onEdit = { spotToEdit ->
+                            ctx.setEditingSpot(spotToEdit)
+                        },
+                    )
+                }
+            }
+            if (ctx.error != null) {
+                Snackbar(
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+                ) { Text(ctx.error!!) }
+            }
+            ctx.editingSpot?.let { spot ->
+                EditRankDialog(
+                    spot = spot,
+                    onConfirm = { updated ->
+                        val withoutOld = ctx.rankedSpots.toMutableList().apply { remove(spot) }
+                        ctx.setRankedSpots(withoutOld)
+                        ctx.setEditingSpot(null)
+
+                        val rating = updated.rating
+                        val spotWithRating = when (rating) {
+                            "good" -> updated.copy(score = SCORE_GOOD_MID)
+                            "okay" -> updated.copy(score = SCORE_OKAY_MID)
+                            "bad" -> updated.copy(score = SCORE_BAD_MID)
+                            else -> updated.copy(score = SCORE_OKAY_MID)
+                        }
+
+                        val indices = ctx.sameRangeIndices(rating)
+                        if (indices.isEmpty()) {
+                            ctx.insertAtIndex(spotWithRating, ctx.startIndexForRating(rating))
+                        } else {
+                            ctx.setState(
+                                RankState.Comparing(
+                                    newSpot = spotWithRating,
+                                    sameRangeIndices = indices,
+                                    low = 0,
+                                    high = indices.size,
+                                ),
+                            )
+                        }
+                    },
+                    onDismiss = { ctx.setEditingSpot(null) },
+                )
+            }
+        }
+    }
+}
+
+private object AddingHandler : RankState.Handler {
+    @Composable
+    override fun Render(ctx: RankStateContext) {
+        AddSpotForm(
+            existingNames = ctx.rankedSpots.map { it.spotName.lowercase() }.toSet(),
+            onSubmit = { newSpot ->
+                ctx.setState(RankState.RatingFirst(newSpot))
+            },
+            onCancel = { ctx.setState(RankState.Viewing) },
+        )
+    }
+}
+
+private class RatingFirstHandler(private val s: RankState.RatingFirst) : RankState.Handler {
+    @Composable
+    override fun Render(ctx: RankStateContext) {
+        InitialRatingDialog(
+            spotName = s.newSpot.spotName,
+            onBad = {
+                val spotWithRating = s.newSpot.copy(
+                    score = SCORE_BAD_MID,
+                    rating = "bad",
+                )
+                val indices = ctx.sameRangeIndices("bad")
+                if (indices.isEmpty()) {
+                    ctx.insertAtIndex(spotWithRating, ctx.startIndexForRating("bad"))
+                } else {
+                    ctx.setState(
+                        RankState.Comparing(
+                            newSpot = spotWithRating,
+                            sameRangeIndices = indices,
+                            low = 0,
+                            high = indices.size,
+                        ),
+                    )
+                }
+            },
+            onOkay = {
+                val spotWithRating = s.newSpot.copy(
+                    score = SCORE_OKAY_MID,
+                    rating = "okay",
+                )
+                val indices = ctx.sameRangeIndices("okay")
+                if (indices.isEmpty()) {
+                    ctx.insertAtIndex(spotWithRating, ctx.startIndexForRating("okay"))
+                } else {
+                    ctx.setState(
+                        RankState.Comparing(
+                            newSpot = spotWithRating,
+                            sameRangeIndices = indices,
+                            low = 0,
+                            high = indices.size,
+                        ),
+                    )
+                }
+            },
+            onGood = {
+                val spotWithRating = s.newSpot.copy(
+                    score = SCORE_GOOD_MID,
+                    rating = "good",
+                )
+                val indices = ctx.sameRangeIndices("good")
+                if (indices.isEmpty()) {
+                    ctx.insertAtIndex(spotWithRating, ctx.startIndexForRating("good"))
+                } else {
+                    ctx.setState(
+                        RankState.Comparing(
+                            newSpot = spotWithRating,
+                            sameRangeIndices = indices,
+                            low = 0,
+                            high = indices.size,
+                        ),
+                    )
+                }
+            },
+            onCancel = { ctx.setState(RankState.Viewing) },
+        )
+    }
+}
+
+private class ComparingHandler(private val s: RankState.Comparing) : RankState.Handler {
+    @Composable
+    override fun Render(ctx: RankStateContext) {
+        val indices = s.sameRangeIndices
+        val mid = (s.low + s.high) / 2
+        if (s.low >= s.high) {
+            val insertAt = if (s.low < indices.size) indices[s.low] else ctx.rankedSpots.size
+            LaunchedEffect(s.newSpot.spotName, insertAt) {
+                ctx.insertAtIndex(s.newSpot, insertAt)
+            }
+        } else {
+            val fullIndex = indices[mid]
+            ComparisonView(
+                newSpotName = s.newSpot.spotName,
+                existingSpotName = ctx.rankedSpots[fullIndex].spotName,
+                existingRank = mid + 1,
+                totalComparisons = indices.size,
+                onPreferNew = {
+                    ctx.scope.launch {
+                        ctx.recordComparison(
+                            s.newSpot.spotName,
+                            ctx.rankedSpots[fullIndex].spotName,
+                        )
+                        ctx.setState(s.copy(high = mid))
+                    }
+                },
+                onPreferExisting = {
+                    ctx.scope.launch {
+                        ctx.recordComparison(
+                            ctx.rankedSpots[fullIndex].spotName,
+                            s.newSpot.spotName,
+                        )
+                        ctx.setState(s.copy(low = mid + 1))
+                    }
+                },
+                onCancel = { ctx.setState(RankState.Viewing) },
+            )
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -199,6 +423,19 @@ fun RankScreen() {
     fun sameRangeIndices(rating: String): List<Int> =
         rankedSpots.mapIndexed { i, s -> i to s }.filter { it.second.rating == rating }.map { it.first }
 
+    suspend fun recordComparison(winner: String, loser: String) {
+        try {
+            steliApi.compareSpots(
+                CompareSpotsRequest(
+                    winnerSpotName = winner,
+                    loserSpotName = loser,
+                ),
+            )
+        } catch (_: Exception) {
+            // Non-fatal: ranking still works client-side even if the server can't record the comparison.
+        }
+    }
+
     Scaffold(
         topBar = {
             Column(
@@ -235,169 +472,25 @@ fun RankScreen() {
         },
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            when (val currentState = state) {
-                is RankState.Viewing -> {
-                    if (loading) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator()
-                        }
-                    } else if (rankedSpots.isEmpty()) {
-                        EmptyRankingsView()
-                    } else {
-                        RankedListView(
-                            spots = rankedSpots.sortedByDescending { it.score },
-                            saving = saving,
-                            onDelete = { spotToRemove ->
-                                val idx = rankedSpots.indexOf(spotToRemove)
-                                if (idx >= 0) {
-                                    val updated = rankedSpots.toMutableList().apply { removeAt(idx) }
-                                    saveRankings(updated)
-                                }
-                            },
-                            onEdit = { spotToEdit ->
-                                editingSpot = spotToEdit
-                            },
-                        )
-                    }
-                    if (error != null) {
-                        Snackbar(
-                            modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
-                        ) { Text(error!!) }
-                    }
-                    editingSpot?.let { spot ->
-                        EditRankDialog(
-                            spot = spot,
-                            onConfirm = { updated ->
-                                // Remove the old instance of this spot
-                                val withoutOld = rankedSpots.toMutableList().apply {
-                                    remove(spot)
-                                }
-                                rankedSpots = withoutOld
-                                editingSpot = null
-
-                                // Treat the updated spot as if it were newly added,
-                                // using the same rating-first + pairwise comparison flow.
-                                val rating = updated.rating
-                                val spotWithRating = when (rating) {
-                                    "good" -> updated.copy(score = SCORE_GOOD_MID)
-                                    "okay" -> updated.copy(score = SCORE_OKAY_MID)
-                                    "bad" -> updated.copy(score = SCORE_BAD_MID)
-                                    else -> updated.copy(score = SCORE_OKAY_MID)
-                                }
-
-                                val indices = sameRangeIndices(rating)
-                                if (indices.isEmpty()) {
-                                    // No existing items in this range: insert directly at the start index
-                                    insertAtIndex(spotWithRating, startIndexForRating(rating))
-                                } else {
-                                    // Reuse the existing pairwise comparison flow
-                                    state = RankState.Comparing(
-                                        newSpot = spotWithRating,
-                                        sameRangeIndices = indices,
-                                        low = 0,
-                                        high = indices.size,
-                                    )
-                                }
-                            },
-                            onDismiss = { editingSpot = null },
-                        )
-                    }
-                }
-
-                is RankState.Adding -> {
-                    AddSpotForm(
-                        existingNames = rankedSpots.map { it.spotName.lowercase() }.toSet(),
-                        onSubmit = { newSpot ->
-                            // Beli: always rate first (Good/Bad/Okay), then compare within same range
-                            state = RankState.RatingFirst(newSpot)
-                        },
-                        onCancel = { state = RankState.Viewing },
-                    )
-                }
-
-                is RankState.RatingFirst -> {
-                    InitialRatingDialog(
-                        spotName = currentState.newSpot.spotName,
-                        onBad = {
-                            val spotWithRating = currentState.newSpot.copy(
-                                score = SCORE_BAD_MID,
-                                rating = "bad",
-                            )
-                            val indices = sameRangeIndices("bad")
-                            if (indices.isEmpty()) {
-                                insertAtIndex(spotWithRating, startIndexForRating("bad"))
-                            } else {
-                                state = RankState.Comparing(
-                                    newSpot = spotWithRating,
-                                    sameRangeIndices = indices,
-                                    low = 0,
-                                    high = indices.size,
-                                )
-                            }
-                        },
-                        onOkay = {
-                            val spotWithRating = currentState.newSpot.copy(
-                                score = SCORE_OKAY_MID,
-                                rating = "okay",
-                            )
-                            val indices = sameRangeIndices("okay")
-                            if (indices.isEmpty()) {
-                                insertAtIndex(spotWithRating, startIndexForRating("okay"))
-                            } else {
-                                state = RankState.Comparing(
-                                    newSpot = spotWithRating,
-                                    sameRangeIndices = indices,
-                                    low = 0,
-                                    high = indices.size,
-                                )
-                            }
-                        },
-                        onGood = {
-                            val spotWithRating = currentState.newSpot.copy(
-                                score = SCORE_GOOD_MID,
-                                rating = "good",
-                            )
-                            val indices = sameRangeIndices("good")
-                            if (indices.isEmpty()) {
-                                insertAtIndex(spotWithRating, startIndexForRating("good"))
-                            } else {
-                                state = RankState.Comparing(
-                                    newSpot = spotWithRating,
-                                    sameRangeIndices = indices,
-                                    low = 0,
-                                    high = indices.size,
-                                )
-                            }
-                        },
-                        onCancel = { state = RankState.Viewing },
-                    )
-                }
-
-                is RankState.Comparing -> {
-                    val indices = currentState.sameRangeIndices
-                    val mid = (currentState.low + currentState.high) / 2
-                    if (currentState.low >= currentState.high) {
-                        // Insert before indices[low], or at end of same-range if low == indices.size
-                        val insertAt = if (currentState.low < indices.size) indices[currentState.low] else rankedSpots.size
-                        insertAtIndex(currentState.newSpot, insertAt)
-                    } else {
-                        val fullIndex = indices[mid]
-                        ComparisonView(
-                            newSpotName = currentState.newSpot.spotName,
-                            existingSpotName = rankedSpots[fullIndex].spotName,
-                            existingRank = mid + 1,
-                            totalComparisons = indices.size,
-                            onPreferNew = {
-                                state = currentState.copy(high = mid)
-                            },
-                            onPreferExisting = {
-                                state = currentState.copy(low = mid + 1)
-                            },
-                            onCancel = { state = RankState.Viewing },
-                        )
-                    }
-                }
-            }
+            val ctx = RankStateContext(
+                rankedSpots = rankedSpots,
+                setRankedSpots = { rankedSpots = it },
+                state = state,
+                setState = { state = it },
+                loading = loading,
+                saving = saving,
+                error = error,
+                setError = { error = it },
+                editingSpot = editingSpot,
+                setEditingSpot = { editingSpot = it },
+                scope = scope,
+                saveRankings = { saveRankings(it) },
+                insertAtIndex = { spot, index -> insertAtIndex(spot, index) },
+                startIndexForRating = { startIndexForRating(it) },
+                sameRangeIndices = { sameRangeIndices(it) },
+                recordComparison = { w, l -> recordComparison(w, l) },
+            )
+            state.handler().Render(ctx)
         }
     }
 }
@@ -622,7 +715,7 @@ private fun RankedListView(
                             Icon(
                                 Icons.Filled.Delete,
                                 contentDescription = "Remove",
-                                tint = Color(0xFF8D6E63),
+                                tint = Color(0xFF111111),
                             )
                         }
                     }
@@ -642,6 +735,9 @@ private fun AddSpotForm(
     var notes by remember { mutableStateOf("") }
     var photoUrl by remember { mutableStateOf("") }
     var nameError by remember { mutableStateOf<String?>(null) }
+    var creating by remember { mutableStateOf(false) }
+
+    val scope = rememberCoroutineScope()
 
     // Fetch all known spots for autocomplete suggestions
     var allSpots by remember { mutableStateOf<List<StudySpot>>(emptyList()) }
@@ -750,12 +846,34 @@ private fun AddSpotForm(
                         nameError = "You've already ranked this spot"
                         return@Button
                     }
-                    onSubmit(LocalRankedSpot(spotName = trimmedName, notes = notes.trim(), photoUrl = photoUrl.trim()))
+                    creating = true
+                    scope.launch {
+                        // Ensure the spot exists in the global list immediately.
+                        try {
+                            steliApi.createSpot(
+                                CreateSpotRequest(
+                                    name = trimmedName,
+                                    category = "",
+                                ),
+                            )
+                        } catch (_: Exception) {
+                            // If this fails, ranking save later can still create the spot.
+                        }
+                        onSubmit(
+                            LocalRankedSpot(
+                                spotName = trimmedName,
+                                notes = notes.trim(),
+                                photoUrl = photoUrl.trim(),
+                            ),
+                        )
+                        creating = false
+                    }
                 },
+                enabled = !creating,
                 modifier = Modifier.weight(1f),
                 shape = RoundedCornerShape(8.dp),
             ) {
-                Text("Next")
+                Text(if (creating) "Creating..." else "Next")
             }
         }
     }

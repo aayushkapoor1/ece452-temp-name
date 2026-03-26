@@ -77,10 +77,16 @@ interface SteliApi {
     @GET("api/spots")
     suspend fun getSpots(@Query("q") query: String = ""): List<StudySpot>
 
+    @POST("api/spots")
+    suspend fun createSpot(@Body request: CreateSpotRequest): StudySpot
+
     // ── Rankings ──────────────────────────────────────────────────
 
     @PUT("api/rankings")
     suspend fun setRankings(@Body request: SetRankingsRequest): List<RankedSpot>
+
+    @POST("api/rankings/compare")
+    suspend fun compareSpots(@Body request: CompareSpotsRequest): CompareSpotsResponse
 
     @GET("api/rankings/feed")
     suspend fun getFeed(): List<FeedItem>
