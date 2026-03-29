@@ -1,11 +1,23 @@
 package com.steli.app
 
 import android.os.Bundle
+import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Balance
 import androidx.compose.material.icons.filled.Home
@@ -13,9 +25,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.ui.Alignment
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -26,6 +36,9 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.dp
 import com.steli.app.data.AuthManager
 import com.steli.app.ui.screens.*
 import com.steli.app.ui.theme.SteliTheme
@@ -50,10 +63,12 @@ private object Routes {
     const val REGISTER = "register"
     const val HOME = "home"
     const val RANK = "rank"
+    const val RANK_WITH_SPOT = "rank?spotName={spotName}"
     const val DISCOVER = "discover"
     const val PROFILE = "profile"
     const val USER = "user/{username}"
     fun user(username: String) = "user/$username"
+    fun rankWithSpot(spotName: String) = "rank?spotName=${Uri.encode(spotName)}"
 }
 
 private data class BottomNavItem(
@@ -80,35 +95,60 @@ fun SteliApp() {
     // Check current route for showing bottom bar
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
-    val showBottomBar = currentRoute in bottomNavItems.map { it.route }
+    val currentBaseRoute = currentRoute?.substringBefore("?")
+    val showBottomBar = currentBaseRoute in bottomNavItems.map { it.route }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
+        containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
             if (showBottomBar) {
-                NavigationBar {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(72.dp)
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
                     bottomNavItems.forEach { item ->
-                        NavigationBarItem(
-                            selected = currentRoute == item.route,
-                            onClick = {
-                                navController.navigate(item.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
+                        val selected = currentBaseRoute == item.route
+                        val selectedColor = MaterialTheme.colorScheme.onSurface
+                        val unselectedColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        val contentColor = if (selected) selectedColor else unselectedColor
+                        val bgColor = if (selected) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(bgColor)
+                                .clickable {
+                                    navController.navigate(item.route) {
+                                        popUpTo(navController.graph.findStartDestination().id) {
+                                            saveState = true
+                                        }
+                                        launchSingleTop = true
+                                        restoreState = true
                                     }
-                                    launchSingleTop = true
-                                    restoreState = true
                                 }
-                            },
-                            icon = { Icon(item.icon, contentDescription = item.label) },
-                            label = { Text(item.label) },
-                            colors = NavigationBarItemDefaults.colors(
-                                indicatorColor = MaterialTheme.colorScheme.surfaceVariant,
-                                selectedIconColor = MaterialTheme.colorScheme.onSurface,
-                                selectedTextColor = MaterialTheme.colorScheme.onSurface,
-                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            ),
-                        )
+                                .padding(vertical = 6.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    item.icon,
+                                    contentDescription = item.label,
+                                    tint = contentColor,
+                                    modifier = Modifier.size(22.dp),
+                                )
+                                Text(
+                                    text = item.label,
+                                    color = contentColor,
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -157,9 +197,20 @@ fun SteliApp() {
                 RankScreen()
             }
 
+            composable(Routes.RANK_WITH_SPOT) { backStackEntry ->
+                val spotName = backStackEntry.arguments?.getString("spotName")
+                RankScreen(prefillSpotName = spotName)
+            }
+
             composable(Routes.DISCOVER) {
-                // TODO: Search screen
-                Text("Search Screen Placeholder")
+                DiscoverScreen(
+                    onAddSpot = {
+                        navController.navigate(Routes.rankWithSpot(it)) {
+                            launchSingleTop = true
+                        }
+                    },
+                    onNavigateToUser = { navController.navigate(Routes.user(it)) },
+                )
             }
 
             composable(Routes.PROFILE) {
@@ -174,9 +225,23 @@ fun SteliApp() {
                 )
             }
 
-            composable(Routes.USER) {
-                // TODO: User screen
-                Text("User Screen Placeholder")
+            composable(Routes.USER) { backStackEntry ->
+                val username = backStackEntry.arguments?.getString("username")
+                if (username == null) {
+                    Text("User not found")
+                    return@composable
+                }
+
+                ProfileScreen(
+                    username = username,
+                    onNavigateToUser = { navController.navigate(Routes.user(it)) },
+                    onNavigateBack = { navController.popBackStack() },
+                    onLogout = {
+                        navController.navigate(Routes.LOGIN) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    },
+                )
             }
         }
     }

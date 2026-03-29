@@ -150,12 +150,20 @@ fun RegisterScreen(
                             AuthManager.saveSession(response.token, response.user)
                             onRegisterSuccess()
                         } catch (e: retrofit2.HttpException) {
-                            val body = e.response()?.errorBody()?.string() ?: ""
-                            error = when {
-                                "already taken" in body -> "Username is already taken"
-                                "longer than 8" in body -> "Password must be longer than 8 characters"
-                                else -> "Registration failed. Please try again."
+                        val body = e.response()?.errorBody()?.string() ?: ""
+                        error = try {
+                            val jsonObj = com.google.gson.JsonParser.parseString(body).asJsonObject
+                            val detailEl = jsonObj.get("detail")
+                            if (detailEl != null && detailEl.isJsonObject) {
+                                val detailObj = detailEl.asJsonObject
+                                val messageEl = detailObj.get("message")
+                                messageEl?.asString ?: "Registration failed. Please try again."
+                            } else {
+                                "Registration failed. Please try again."
                             }
+                        } catch (_: Exception) {
+                            "Registration failed. Please try again."
+                        }
                         } catch (e: Exception) {
                             error = "Connection error. Is the server running?"
                         } finally {

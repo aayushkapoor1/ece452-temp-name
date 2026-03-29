@@ -42,6 +42,11 @@ data class StudySpot(
     val category: String = "",
 )
 
+data class CreateSpotRequest(
+    val name: String,
+    val category: String = "",
+)
+
 // ── Rankings ──────────────────────────────────────────────────────
 
 data class RankedItem(
@@ -53,6 +58,17 @@ data class RankedItem(
 
 data class SetRankingsRequest(
     val rankings: List<RankedItem>,
+)
+
+data class CompareSpotsRequest(
+    @SerializedName("winner_spot_name") val winnerSpotName: String,
+    @SerializedName("loser_spot_name") val loserSpotName: String,
+)
+
+data class CompareSpotsResponse(
+    val status: String,
+    val winner: StudySpot,
+    val loser: StudySpot,
 )
 
 data class RankedSpot(
